@@ -4,7 +4,7 @@ import numpy as np
 from skimage import io
 from skimage.util import invert
 from skimage.transform import rotate
-from skimage.morphology import dilation, binary_dilation, disk, rectangle
+from skimage.morphology import dilation, binary_dilation, disk, rectangle, binary_opening, binary_closing
 from skimage.feature import peak_local_max
 import matplotlib.pyplot as plt
 
@@ -70,7 +70,10 @@ def plot_angles(img, name):
     plt.subplots_adjust(hspace=0.5)
     plt.show()
 
-def find_words(img, name, photo):
+def find_words(img, name, photo, ifprint = False):
+
+    original = photo.copy()
+
     # sumujemy białe piksele w rzędach i kolumnach
     rows = np.sum(img, axis=1)
     cols = np.sum(img, axis=0)
@@ -80,6 +83,8 @@ def find_words(img, name, photo):
     img = img[gora:dol, lewo:prawo]
     rows = rows[gora:dol]
     cols = cols[lewo:prawo]
+
+    masked_image = np.zeros_like(img, dtype=np.float32)
 
     # usuwamy małe szumy
     rows_binary = rows > max(rows)/ 10
@@ -117,7 +122,9 @@ def find_words(img, name, photo):
     colors = [(204, 255, 255), (0, 0, 204), (0, 204, 0), (255, 0, 0), (153, 0, 153), (255, 128, 0),
               (255, 204, 229), (255, 255, 51), (0, 128, 255), (153, 255, 153), (255, 102, 255), (255, 0, 127)]
 
-    for ix, row in enumerate(bounds):
+    for ix, row in enumerate(bounds[1:]):
+        mask = np.zeros_like(img)
+
         color = colors[ix%len(colors)]
 
         # wycinamy z obrazka wiersz
@@ -142,25 +149,56 @@ def find_words(img, name, photo):
             right = max(cont[:,0]) + lewo
             up = min(cont[:, 1]) + row[0] + gora
             down = max(cont[:, 1]) + row[0] +gora
-            print(left, right, up, down)
+            #print(left, right, up, down)
             cont_edges.append([left, right, up, down])
 
+            
+                
+
             # rectangle za nc nie chciało mi zadziałać, więc póki co są 4 linie xD
-            cv2.line(photo, (left, up), (right, up), color, 3)
-            cv2.line(photo, (left, up), (left, down), color, 3)
-            cv2.line(photo, (left, down), (right, down), color, 3)
-            cv2.line(photo, (right, up), (right, down), color, 3)
+            #RES: u mnie działa, ale jak coś zostawiam obie wersje bo możliwie, że przestanie działać na starszej wersji :P
+            #cv2.line(photo, (left, up), (right, up), color, 3)
+            #cv2.line(photo, (left, up), (left, down), color, 3)
+            #cv2.line(photo, (left, down), (right, down), color, 3)
+            #cv2.line(photo, (right, up), (right, down), color, 3)
+
+            #cv2.rectangle(photo,(left, up), (right, down), color,-1)
+            if ((right-left)*(down-up) >300):
+                cv2.rectangle(mask,(left, up), (right, down), 1 ,-1)
+        
+        #TODO tu mi się coś nie zgadza, tw dwie wielkości, moze trochę nie rozumiem tamtej manipilacji wielkościami? 
+        mask = binary_closing(mask, rectangle(5,10))
+        #masked_image[mask] = ix % 2 * 0.5 + 0.5
+        masked_image[mask] = ix + 1
+        #fig = plt.figure()
+        #plt.imshow(mask, cmap='binary')
+        #plt.show()
 
         # ustawiamy w kolejności od lewej do prawej
         cont_edges = cont_edges.sort(key=lambda x: x[3])
 
-    fig = plt.figure(figsize=(40, 40))
-    fig.suptitle(name, fontsize=16)
-    io.imshow(photo)
-    plt.show()
+    masked_image = cv2.copyMakeBorder(
+        masked_image,
+        top=0,
+        bottom=photo.shape[0]-masked_image.shape[0],
+        left=0,
+        right=photo.shape[1]-masked_image.shape[1],
+        borderType=cv2.BORDER_CONSTANT,
+        value=0,
+    )
+
+    if ifprint:
+        fig = plt.figure(figsize=(40, 40))
+        fig.add_subplot(1, 2, 1)
+        io.imshow(masked_image)
+        fig.add_subplot(1, 2, 2)
+        io.imshow(original)
+        fig.suptitle(name, fontsize=16)
+        plt.show()
+    return masked_image
 
 
-def process(img_name):
+def process(img_name, ifprint):
     src = cv2.imread(img_name, cv2.IMREAD_COLOR)
 
     if len(src.shape) != 2:
@@ -175,12 +213,18 @@ def process(img_name):
     gray2 = binary_dilation(gray2, disk(3))
     # img_edges = cv2.Canny(gray, 200, 200, apertureSize=3)
 
-    plot_angles(gray2, img_name)
-    find_words(gray2, img_name, src)
+    if ifprint:
+        plot_angles(gray2, img_name)
+
+    return find_words(gray2, img_name, src, ifprint)
 
 
 def sortKeyFunc(s):
     return int(os.path.basename(s)[4:-4])
+
+
+def detect_words(path_to_image, ifprint = False):
+    return process(path_to_image, ifprint)
 
 
 if __name__ == "__main__":
@@ -191,7 +235,8 @@ if __name__ == "__main__":
         raise ValueError('Błąd przy wczytywaniu plików')
     filenames.sort(key=sortKeyFunc)
 
-    print(filenames)
+    #print(filenames)
 
-    for i in reversed(range(len(filenames))):
-        process(filenames[i])
+    for i in reversed(range(len(filenames))):   
+        #use ifprint = True to check result  
+        detect_words(filenames[i])
