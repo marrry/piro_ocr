@@ -16,11 +16,13 @@ def get_rows(maxima, size):
     for j in range(len(lines)):
         if j == 0:
             bounds.append([0, int(halfs[0])])
-        elif j == len(lines) -1:
-            bounds.append([int(halfs[-1]), size])
+        elif j == len(lines) - 1:
+            lens = [b[1]-b[0] for b in bounds[1:]]
+            bounds.append([int(halfs[-1]), int(halfs[-1]+ np.mean(lens))])
         else:
             bounds.append([int(halfs[j-1]), int(halfs[j])])
 
+    bounds[0][0] = max(int(halfs[0] - np.mean(lens)), 0)
     return bounds
 
 
@@ -122,7 +124,7 @@ def find_words(img, name, photo, ifprint = False):
     colors = [(204, 255, 255), (0, 0, 204), (0, 204, 0), (255, 0, 0), (153, 0, 153), (255, 128, 0),
               (255, 204, 229), (255, 255, 51), (0, 128, 255), (153, 255, 153), (255, 102, 255), (255, 0, 127)]
 
-    for ix, row in enumerate(bounds[1:]):
+    for ix, row in enumerate(bounds):
         mask = np.zeros_like(img)
 
         color = colors[ix%len(colors)]
@@ -166,7 +168,7 @@ def find_words(img, name, photo, ifprint = False):
             if ((right-left)*(down-up) >300):
                 cv2.rectangle(mask,(left, up), (right, down), 1 ,-1)
         
-        #TODO tu mi się coś nie zgadza, tw dwie wielkości, moze trochę nie rozumiem tamtej manipilacji wielkościami? 
+        #TODO tu mi się coś nie zgadza, tw dwie wielkości, moze trochę nie rozumiem tamtej manipulacji wielkościami?
         mask = binary_closing(mask, rectangle(5,10))
         #masked_image[mask] = ix % 2 * 0.5 + 0.5
         masked_image[mask] = ix + 1
@@ -213,8 +215,8 @@ def process(img_name, ifprint):
     gray2 = binary_dilation(gray2, disk(3))
     # img_edges = cv2.Canny(gray, 200, 200, apertureSize=3)
 
-    if ifprint:
-        plot_angles(gray2, img_name)
+    #if ifprint:
+    #    plot_angles(gray2, img_name)
 
     return find_words(gray2, img_name, src, ifprint)
 
@@ -237,6 +239,6 @@ if __name__ == "__main__":
 
     #print(filenames)
 
-    for i in reversed(range(len(filenames))):   
+    for i in reversed(range(len(filenames))):
         #use ifprint = True to check result  
-        detect_words(filenames[i])
+        detect_words(filenames[i], True)
