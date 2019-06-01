@@ -23,6 +23,24 @@ def get_rows(maxima, size):
             bounds.append([int(halfs[j-1]), int(halfs[j])])
 
     bounds[0][0] = max(int(halfs[0] - np.mean(lens)), 0)
+
+    row_lengths = [b[1]-b[0] for b in bounds]
+    avg_len = int(np.mean(row_lengths))
+    for_join = []
+
+    for r, row in enumerate(row_lengths):
+        if row > avg_len*1.4:
+            bounds[r][1] = bounds[r][0] + avg_len
+        if r < len(row_lengths) - 1 and row < avg_len * 0.6 and row_lengths[r + 1] < avg_len * 0.6:
+            for_join.append(r+1)
+
+    for k in for_join:
+        bounds[k-1][1] = bounds[k][1]
+    # trzeba zrobić kolejną iterację, bo operujemy na indeksach,
+    # więc nie możemy usuwać rzeczy z listy w trakcie przetwarzania
+    for k in for_join:
+        bounds.pop(k)
+
     return bounds
 
 
@@ -117,22 +135,13 @@ def find_words(img, name, photo, ifprint = False):
 
     # robimy dylatację w poziomie
     img = dilation(img, rectangle(1, 10))
-    img2 = img.astype(np.uint8) * 255
-    img2 = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
-
-    # definicje kolorków ;)
-    colors = [(204, 255, 255), (0, 0, 204), (0, 204, 0), (255, 0, 0), (153, 0, 153), (255, 128, 0),
-              (255, 204, 229), (255, 255, 51), (0, 128, 255), (153, 255, 153), (255, 102, 255), (255, 0, 127)]
 
     for ix, row in enumerate(bounds):
         mask = np.zeros_like(img)
 
-        color = colors[ix%len(colors)]
-
         # wycinamy z obrazka wiersz
         cut = img[row[0]:row[1]]
         cut = cut.astype(np.uint8)
-
         # znajdujemy na nim kontury
         to_unpack= cv2.findContours(cut, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         if len(to_unpack)==3:
@@ -150,34 +159,33 @@ def find_words(img, name, photo, ifprint = False):
             left = min(cont[:,0]) + lewo # dodajemy lewo i górę, żeby zmapować na odpowiednie współrzędne w oryginalnym zdjęciu
             right = max(cont[:,0]) + lewo
             up = min(cont[:, 1]) + row[0] + gora
-            down = max(cont[:, 1]) + row[0] +gora
-            #print(left, right, up, down)
+            down = max(cont[:, 1]) + row[0] + gora
+
             cont_edges.append([left, right, up, down])
 
-            
-                
-
-            # rectangle za nc nie chciało mi zadziałać, więc póki co są 4 linie xD
-            #RES: u mnie działa, ale jak coś zostawiam obie wersje bo możliwie, że przestanie działać na starszej wersji :P
-            #cv2.line(photo, (left, up), (right, up), color, 3)
-            #cv2.line(photo, (left, up), (left, down), color, 3)
-            #cv2.line(photo, (left, down), (right, down), color, 3)
-            #cv2.line(photo, (right, up), (right, down), color, 3)
-
-            #cv2.rectangle(photo,(left, up), (right, down), color,-1)
-            if ((right-left)*(down-up) >300):
-                cv2.rectangle(mask,(left, up), (right, down), 1 ,-1)
+            if (right-left)*(down-up) >300:
+                cv2.rectangle(mask,(left, up), (right, down), 1, -1)
         
         #TODO tu mi się coś nie zgadza, tw dwie wielkości, moze trochę nie rozumiem tamtej manipulacji wielkościami?
         mask = binary_closing(mask, rectangle(5,10))
+        # rozciągamy zaznaczenie w pionie
+        mask_cols = np.sum(mask, axis=0)
+        row_beg = row[0] + gora
+        row_end = row[1] + gora
+        for nr_col, col in enumerate(mask_cols):
+            if col > 0:
+                mask[row_beg:row_end, nr_col] = 1
+
+        # jesli zaznaczenie w wierszu ma powierzchnię < 2%, to zerujemy wiersz
+        pixel_sum = np.sum(mask[row_beg:row_end])
+        if pixel_sum < (row_end - row_beg)*len(cols) * 0.02:
+            mask[row_beg:row_end] = 0
+
         #masked_image[mask] = ix % 2 * 0.5 + 0.5
         masked_image[mask] = ix + 1
-        #fig = plt.figure()
-        #plt.imshow(mask, cmap='binary')
-        #plt.show()
 
         # ustawiamy w kolejności od lewej do prawej
-        cont_edges = cont_edges.sort(key=lambda x: x[3])
+        # cont_edges = cont_edges.sort(key=lambda x: x[3])
 
     masked_image = cv2.copyMakeBorder(
         masked_image,
@@ -239,6 +247,6 @@ if __name__ == "__main__":
 
     #print(filenames)
 
-    for i in reversed(range(len(filenames))):
+    for i in range(len(filenames)):
         #use ifprint = True to check result  
         detect_words(filenames[i], True)
