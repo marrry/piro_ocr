@@ -33,12 +33,12 @@ def get_rows(maxima, size):
             bounds[r][1] = bounds[r][0] + avg_len
         if r < len(row_lengths) - 1 and row < avg_len * 0.6 and row_lengths[r + 1] < avg_len * 0.6:
             for_join.append(r+1)
-
+            
     for k in for_join:
         bounds[k-1][1] = bounds[k][1]
     # trzeba zrobić kolejną iterację, bo operujemy na indeksach,
     # więc nie możemy usuwać rzeczy z listy w trakcie przetwarzania
-    for k in for_join:
+    for k in reversed(for_join):
         bounds.pop(k)
 
     return bounds
@@ -249,4 +249,4 @@ if __name__ == "__main__":
 
     for i in range(len(filenames)):
         #use ifprint = True to check result  
-        detect_words(filenames[i], True)
+        detect_words(filenames[i])
