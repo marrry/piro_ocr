@@ -166,8 +166,8 @@ def find_words(img, name, photo, ifprint = False):
             if (right-left)*(down-up) >300:
                 cv2.rectangle(mask,(left, up), (right, down), 1, -1)
         
-        #TODO tu mi się coś nie zgadza, tw dwie wielkości, moze trochę nie rozumiem tamtej manipulacji wielkościami?
-        mask = binary_closing(mask, rectangle(5,10))
+        # TODO tu mi się coś nie zgadza, tw dwie wielkości, moze trochę nie rozumiem tamtej manipulacji wielkościami?
+        mask = binary_closing(mask, rectangle(5, 10))
         # rozciągamy zaznaczenie w pionie
         mask_cols = np.sum(mask, axis=0)
         row_beg = row[0] + gora
@@ -205,7 +205,76 @@ def find_words(img, name, photo, ifprint = False):
         io.imshow(original)
         fig.suptitle(name, fontsize=16)
         plt.show()
-    return masked_image
+
+    rows_bounds = [[r[0]+gora, r[1]+gora] for r in bounds]
+
+    return photo, masked_image, rows_bounds
+
+def get_index(img, masked_image, bounds):
+    print(img.shape, masked_image.shape)
+    for i, r in enumerate(bounds):
+        row = img[r[0]:r[1]]
+        masked_row = masked_image[r[0]:r[1]]
+        sum_col = np.sum(masked_row, axis=0)
+
+        edges = [ix for ix in range(len(sum_col)-1) if sum_col[ix+1] != sum_col[ix]]
+        if edges:
+            print(edges)
+            index_area = row[:, edges[-2]:edges[-1]]
+            gray = cv2.cvtColor(index_area, cv2.COLOR_BGR2GRAY)
+
+            th2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
+            th2 = cv2.bitwise_not(th2)
+
+            kernel = np.ones((2, 2), np.uint8)
+            th2 = cv2.erode(th2, kernel, iterations=1)
+            th2 = cv2.dilate(th2, kernel, iterations=1)
+
+            row_sums = np.sum(th2, axis=1)
+            for r in range(len(row_sums)):
+                if row_sums[r] >= th2.shape[1]*255*0.5:
+                    th2[r] = 0
+
+            kernel = rectangle(2,1)#np.ones((1, 2), np.uint8)
+            th2 = cv2.erode(th2, kernel, iterations=1)
+            th2 = cv2.dilate(th2, kernel, iterations=1)
+
+            col_sums = np.sum(th2, axis=0)
+            for c in range(len(col_sums)):
+                if col_sums[c] >= th2.shape[0] * 255 * 0.5:
+                    th2[:, c] = 0
+
+            kernel = np.ones((1, 2), np.uint8)
+            th2 = cv2.erode(th2, kernel, iterations=1)
+            th2 = cv2.dilate(th2, kernel, iterations=2)
+
+            th2 = cv2.dilate(th2, np.ones((2, 2), np.uint8), iterations=2)
+
+            cols_hist = np.sum(th2, axis=0) /255
+            cols_hist = cols_hist
+            print(cols_hist)
+
+            maksima = peak_local_max(cols_hist, 10)
+            maksima = [x[0] for x in maksima]
+
+            # odfiltrowujemy szumy
+            maksima_filtered = []
+            for i in range(len(maksima) - 1):
+                if abs(maksima[i] - maksima[i + 1]) > 10:
+                    maksima_filtered.append(maksima[i])
+            maksima_filtered.append(maksima[-1])
+
+            print("Potencjalne kolumny ze środkiem cyfr:")
+            print(maksima_filtered)
+            #kernel = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
+            #gray2 = cv2.filter2D(th2, 0, kernel)
+
+            #fig = plt.figure(figsize=(40, 40))
+            #fig.add_subplot(1, 2, 1)
+            io.imshow(th2)
+            plt.show()
+
+
 
 
 def process(img_name, ifprint):
@@ -234,7 +303,8 @@ def sortKeyFunc(s):
 
 
 def detect_words(path_to_image, ifprint = False):
-    return process(path_to_image, ifprint)
+    _, masked_image, _ = process(path_to_image, ifprint)
+    return masked_image
 
 
 if __name__ == "__main__":
@@ -248,5 +318,9 @@ if __name__ == "__main__":
     #print(filenames)
 
     for i in range(len(filenames)):
+        img, masked_image, rows_bounds = process(filenames[i], ifprint=True)
+        get_index(img, masked_image, rows_bounds)
+
+    for i in range(len(filenames)):
         #use ifprint = True to check result  
-        detect_words(filenames[i])
+        detect_words(filenames[i], ifprint=True)
