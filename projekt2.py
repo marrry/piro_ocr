@@ -8,6 +8,8 @@ from skimage.morphology import dilation, binary_dilation, disk, rectangle, binar
 from skimage.feature import peak_local_max
 import matplotlib.pyplot as plt
 from box_line_removal import line_removal
+import keras
+import math
 
 
 def get_rows(maxima, size):
@@ -91,8 +93,25 @@ def plot_angles(img, name):
     plt.subplots_adjust(hspace=0.5)
     plt.show()
 
+def pad_scale(image):
+    print(image.shape)
+    if image.shape[0] > image.shape[1]:
+        scale_factor = 28 / image.shape[0]
+        new_x = round(image.shape[0] * scale_factor)
+        image = cv2.resize(image, dsize=(28, new_x), fx=scale_factor, fy=scale_factor)
+        image = cv2.copyMakeBorder(image, top=0, bottom=0, left=math.floor((28-new_x)/2), right=math.ceil((28-new_x)/2), borderType=cv2.BORDER_CONSTANT, value=0)
+    else:
+        scale_factor = 28 / image.shape[1]
+        new_y = round(image.shape[1] * scale_factor)
+        image = cv2.resize(image, dsize=(new_y, 28), fx=scale_factor, fy=scale_factor)
+        image = cv2.copyMakeBorder(image, top=math.floor((28-new_y)/2), bottom=math.ceil((28-new_y)/2), left=0, right=0, borderType=cv2.BORDER_CONSTANT, value=0)
+    return image
+
+
 def find_words(img, name, photo, ifprint = False):
 
+    #TODO
+    
     original = photo.copy()
 
     # sumujemy białe piksele w rzędach i kolumnach
@@ -211,7 +230,7 @@ def find_words(img, name, photo, ifprint = False):
 
     return photo, masked_image, rows_bounds
 
-def get_index(img, masked_image, bounds):
+def get_index(img, masked_image, bounds, model):
     for i, r in enumerate(bounds):
         row = img[r[0]:r[1]]
         height = r[1] - r[0]
@@ -295,7 +314,6 @@ def get_index(img, masked_image, bounds):
                 for i, count in enumerate(counthor):
                     if i < fragment.shape[1]*0.2 or i > fragment.shape[1]*0.8:
                         if count >= maxcounthor:
-                            print('wow')
                             for r in range(fragment.shape[0]):
                                 fragment[r][i] = 0
                 to_cut_top = 0
@@ -307,80 +325,28 @@ def get_index(img, masked_image, bounds):
                         if count < 500: 
                             to_cut_bottom=i
                             break
-                print(fragment.shape, to_cut_top, to_cut_bottom )
+
+            
                 fragment = fragment[to_cut_top : to_cut_bottom, :]
+                fragment = pad_scale(fragment)
+
+                to_predict = [fragment]
+                to_predict = np.asarray(to_predict).astype('float32')
+                to_predict = np.expand_dims(to_predict, axis=3)
+                to_predict /= 255
+                classes = model.predict_classes(to_predict)
+                print('Prediction:' + str(classes[0]))   
 
                 io.imshow(fragment)
                 plt.show()
 
-            print(max_filtered)
-            print(digits_bounds)
+            #print(max_filtered)
+            #print(digits_bounds)
 
             #print(np.mean(sorted(gaps)[1:-1]))
             #print(maksima)
             #print(max_filtered)
             #print(gaps)
-            '''maksima = peak_local_max(cols_hist, 10)
-            
-
-            # odfiltrowujemy szumy
-            maksima_filtered = []
-            for i in range(len(maksima) - 1):
-                if abs(maksima[i] - maksima[i + 1]) > 10:
-                    maksima_filtered.append(maksima[i])
-            maksima_filtered.append(maksima[-1])'''
-
-            '''th2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
-            th2 = cv2.bitwise_not(th2)
-
-            kernel = np.ones((2, 2), np.uint8)
-            th2 = cv2.erode(th2, kernel, iterations=1)
-            th2 = cv2.dilate(th2, kernel, iterations=1)
-
-            row_sums = np.sum(th2, axis=1)
-            for r in range(len(row_sums)):
-                if row_sums[r] >= th2.shape[1]*255*0.5:
-                    th2[r] = 0
-
-            kernel = rectangle(2,1)#np.ones((1, 2), np.uint8)
-            th2 = cv2.erode(th2, kernel, iterations=1)
-            th2 = cv2.dilate(th2, kernel, iterations=1)
-
-            col_sums = np.sum(th2, axis=0)
-            for c in range(len(col_sums)):
-                if col_sums[c] >= th2.shape[0] * 255 * 0.5:
-                    th2[:, c] = 0
-
-            kernel = np.ones((1, 2), np.uint8)
-            th2 = cv2.erode(th2, kernel, iterations=1)
-            th2 = cv2.dilate(th2, kernel, iterations=2)
-
-            th2 = cv2.dilate(th2, np.ones((2, 2), np.uint8), iterations=2)
-
-            cols_hist = np.sum(th2, axis=0) /255
-            cols_hist = cols_hist
-            print(cols_hist)
-
-            maksima = peak_local_max(cols_hist, 10)
-            maksima = [x[0] for x in maksima]
-
-            # odfiltrowujemy szumy
-            maksima_filtered = []
-            for i in range(len(maksima) - 1):
-                if abs(maksima[i] - maksima[i + 1]) > 10:
-                    maksima_filtered.append(maksima[i])
-            maksima_filtered.append(maksima[-1])
-
-            print("Potencjalne kolumny ze środkiem cyfr:")
-            print(maksima_filtered)
-            #kernel = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
-            #gray2 = cv2.filter2D(th2, 0, kernel)
-
-            #fig = plt.figure(figsize=(40, 40))
-            #fig.add_subplot(1, 2, 1)'''
-            #io.imshow(th)
-            #plt.show()
-
 
 
 
@@ -428,8 +394,9 @@ if __name__ == "__main__":
     #print(filenames)
 
     for i in range(len(filenames)):
-        img, masked_image, rows_bounds = process(filenames[i], ifprint=True)
-        get_index(img, masked_image, rows_bounds)
+        img, masked_image, rows_bounds = process(filenames[i], ifprint=False)
+        model = keras.models.load_model('kares_model.mod')
+        get_index(img, masked_image, rows_bounds, model)
 
     for i in range(len(filenames)):
         #use ifprint = True to check result  

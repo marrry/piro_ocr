@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 
-
 def line_removal(image,to_show=False):
     #crop image first
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
