@@ -94,7 +94,6 @@ def plot_angles(img, name):
     plt.show()
 
 def pad_scale(image):
-    print(image.shape)
     if image.shape[0] > image.shape[1]:
         scale_factor = 28 / image.shape[0]
         new_x = round(image.shape[0] * scale_factor)
@@ -231,7 +230,10 @@ def find_words(img, name, photo, ifprint = False):
     return photo, masked_image, rows_bounds
 
 def get_index(img, masked_image, bounds, model):
+    result = []
     for i, r in enumerate(bounds):
+        row_result = []
+
         row = img[r[0]:r[1]]
         height = r[1] - r[0]
         masked_row = masked_image[r[0]:r[1]]
@@ -239,21 +241,14 @@ def get_index(img, masked_image, bounds, model):
 
         edges = [ix for ix in range(len(sum_col)-1) if sum_col[ix+1] != sum_col[ix]]
         if edges:
-            print(edges)
             width = edges[-1] - edges[-2]
             index_area = row[:, edges[-2]:edges[-1]]
 
             try:
                 th = line_removal(index_area)
             except:
-                print('no lines found')
+                #print('no lines found')
                 continue
-                
-            #gray = cv2.cvtColor(index_area, cv2.COLOR_BGR2GRAY)
-            #gray = cv2.blur(gray, (5, 5))
-            #th = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-            #th = cv2.bitwise_not(th)
-            #th = binary_opening(th)
 
             cols_hist = np.sum(th, axis=0)/255
 
@@ -335,19 +330,12 @@ def get_index(img, masked_image, bounds, model):
                 to_predict = np.expand_dims(to_predict, axis=3)
                 to_predict /= 255
                 classes = model.predict_classes(to_predict)
-                print('Prediction:' + str(classes[0]))   
 
-                io.imshow(fragment)
-                plt.show()
+                row_result.append(str(classes[0]))
+        indeks = ''.join(row_result)
+        result.append((None, None, indeks))
 
-            #print(max_filtered)
-            #print(digits_bounds)
-
-            #print(np.mean(sorted(gaps)[1:-1]))
-            #print(maksima)
-            #print(max_filtered)
-            #print(gaps)
-
+    return result
 
 
 def process(img_name, ifprint):
@@ -363,13 +351,6 @@ def process(img_name, ifprint):
     gray2 = cv2.filter2D(gray, -1, kernel)
     gray2 = invert(gray2)
     gray2 = binary_dilation(gray2, disk(3))
-    # img_edges = cv2.Canny(gray, 200, 200, apertureSize=3)
-
-    #io.imshow(gray2)
-    #plt.show()
-
-    #if ifprint:
-    #    plot_angles(gray2, img_name)
 
     return find_words(gray2, img_name, src, ifprint)
 
@@ -383,21 +364,20 @@ def detect_words(path_to_image, ifprint = False):
     return masked_image
 
 
-if __name__ == "__main__":
+def ocr(path_to_image):
+    img, masked_image, rows_bounds = process(path_to_image, ifprint=False)
+    model = keras.models.load_model('kares_model.mod')
+    result = get_index(img, masked_image, rows_bounds, model)
+    print(result)
+    return result
 
+
+if __name__ == "__main__":
     filenames = glob.glob(os.path.join(str(sys.argv[1]), "*.jpg"))
 
     if not filenames:
         raise ValueError('Błąd przy wczytywaniu plików')
     filenames.sort(key=sortKeyFunc)
 
-    #print(filenames)
-
     for i in range(len(filenames)):
-        img, masked_image, rows_bounds = process(filenames[i], ifprint=False)
-        model = keras.models.load_model('kares_model.mod')
-        get_index(img, masked_image, rows_bounds, model)
-
-    for i in range(len(filenames)):
-        #use ifprint = True to check result  
-        detect_words(filenames[i], ifprint=True)
+        ocr(filenames[i])

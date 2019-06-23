@@ -40,7 +40,7 @@ def line_removal(image,to_show=False):
         x1,x2 = x1+diff_x, x2+diff_x
         y1,y2 = y1+diff_y, y2+diff_y
 
-        print(x1,y1,x2,y2)
+        #print(x1,y1,x2,y2)
         matrix = np.zeros((max_max,max_max),np.uint8)
         cv2.line(matrix, (x1,y1), (x2,y2), 1 ,1)
         thres_minus.append(cv2.morphologyEx(threshold, cv2.MORPH_OPEN, matrix))
