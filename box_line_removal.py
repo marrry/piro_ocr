@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import math
 
 
-def detect_words(image):
+def detect_words(image,to_show=False):
     #crop image first
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
