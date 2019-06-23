@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import math
 
 
-def detect_words(image,to_show=False):
+def line_removal(image,to_show=False):
     #crop image first
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
@@ -13,11 +13,6 @@ def detect_words(image,to_show=False):
     _ , threshold = cv2.threshold(sobel, 0, 255, cv2.THRESH_OTSU + cv2.THRESH_BINARY)
     threshold = cv2.bitwise_not(threshold)
     threshold = cv2.morphologyEx(threshold, cv2.MORPH_CLOSE, np.ones((3,3)))
-
-
-    kernel = np.zeros((82,82),np.uint8)
-    for i in range(82):
-        kernel[i][41] = 1
     
     lines = cv2.HoughLinesP(threshold, 1, 2*math.pi/180, 50, 300, 40 )
 

@@ -7,6 +7,7 @@ from skimage.transform import rotate
 from skimage.morphology import dilation, binary_dilation, disk, rectangle, binary_opening, binary_closing
 from skimage.feature import peak_local_max
 import matplotlib.pyplot as plt
+from box_line_removal import line_removal
 
 
 def get_rows(maxima, size):
@@ -211,19 +212,125 @@ def find_words(img, name, photo, ifprint = False):
     return photo, masked_image, rows_bounds
 
 def get_index(img, masked_image, bounds):
-    print(img.shape, masked_image.shape)
     for i, r in enumerate(bounds):
         row = img[r[0]:r[1]]
+        height = r[1] - r[0]
         masked_row = masked_image[r[0]:r[1]]
         sum_col = np.sum(masked_row, axis=0)
 
         edges = [ix for ix in range(len(sum_col)-1) if sum_col[ix+1] != sum_col[ix]]
         if edges:
             print(edges)
+            width = edges[-1] - edges[-2]
             index_area = row[:, edges[-2]:edges[-1]]
-            gray = cv2.cvtColor(index_area, cv2.COLOR_BGR2GRAY)
 
-            th2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
+            try:
+                th = line_removal(index_area)
+            except:
+                print('no lines found')
+                continue
+                
+            #gray = cv2.cvtColor(index_area, cv2.COLOR_BGR2GRAY)
+            #gray = cv2.blur(gray, (5, 5))
+            #th = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+            #th = cv2.bitwise_not(th)
+            #th = binary_opening(th)
+
+            cols_hist = np.sum(th, axis=0)/255
+
+            for c in range(len(cols_hist)):
+                if cols_hist[c] >= height * 0.6:
+                    surround = cols_hist[max(0,c-6): min(c+6, width)]
+                    surround = [s for s in surround if s < height * 0.6]
+                    cols_hist[c] = int(np.mean(surround))
+
+            from scipy.ndimage.filters import gaussian_filter1d
+
+            hist_smooth = gaussian_filter1d(cols_hist, sigma=4)
+
+            maksima = peak_local_max(hist_smooth, 5)
+            maksima = sorted([x[0] for x in maksima])
+
+            gaps = [maksima[o+1]-maksima[o] for o in range(len(maksima)-1)]
+            max_filtered = []
+            flag=0
+            for ig, g in enumerate(gaps):
+                if flag == 1:
+                    flag = 0
+                    continue
+                if g > 0.7*np.mean(sorted(gaps)[1:]):
+                    max_filtered.append(maksima[ig])
+                else:
+                    max_filtered.append(int((maksima[ig]+maksima[ig+1])/2))
+                    flag = 1
+            if len(maksima) > 0:
+                max_filtered.append(maksima[-1])
+
+            #plt.plot(hist_smooth)
+
+            digits_bounds = []
+
+            for im, m in enumerate(max_filtered):
+                if im == 0:
+                    digits_bounds.append(0)
+                else:
+                    digits_bounds.append(int((max_filtered[im-1] + max_filtered[im])/2))
+                    if im == len(max_filtered) - 1:
+                        digits_bounds.append(width)
+
+            kernel = np.zeros((2,2) ,np.uint8)
+            kernel2 = np.zeros((2,2),np.uint8)
+            for i in (0,1):
+                kernel[1][i] = 1
+                kernel2[i][1] = 1
+
+            for k in range(len(max_filtered)-1):
+                fragment = th[:, digits_bounds[k]:digits_bounds[k+1]]
+                fragment = cv2.morphologyEx(fragment, cv2.MORPH_OPEN, kernel)
+                fragment = cv2.morphologyEx(fragment, cv2.MORPH_OPEN, kernel2)
+
+                countver = np.sum(fragment, axis = 1)
+                counthor = np.sum(fragment, axis = 0)
+                maxcounthor = (fragment.shape[1] * 255) * 0.8
+                for i, count in enumerate(counthor):
+                    if i < fragment.shape[1]*0.2 or i > fragment.shape[1]*0.8:
+                        if count >= maxcounthor:
+                            print('wow')
+                            for r in range(fragment.shape[0]):
+                                fragment[r][i] = 0
+                to_cut_top = 0
+                to_cut_bottom = fragment.shape[0]-1
+                for i, count in enumerate(countver):
+                    if i < fragment.shape[0]*0.2:
+                        if count == 0: to_cut_top=i
+                    if i > fragment.shape[0]*0.5:
+                        if count < 500: 
+                            to_cut_bottom=i
+                            break
+                print(fragment.shape, to_cut_top, to_cut_bottom )
+                fragment = fragment[to_cut_top : to_cut_bottom, :]
+
+                io.imshow(fragment)
+                plt.show()
+
+            print(max_filtered)
+            print(digits_bounds)
+
+            #print(np.mean(sorted(gaps)[1:-1]))
+            #print(maksima)
+            #print(max_filtered)
+            #print(gaps)
+            '''maksima = peak_local_max(cols_hist, 10)
+            
+
+            # odfiltrowujemy szumy
+            maksima_filtered = []
+            for i in range(len(maksima) - 1):
+                if abs(maksima[i] - maksima[i + 1]) > 10:
+                    maksima_filtered.append(maksima[i])
+            maksima_filtered.append(maksima[-1])'''
+
+            '''th2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
             th2 = cv2.bitwise_not(th2)
 
             kernel = np.ones((2, 2), np.uint8)
@@ -270,9 +377,9 @@ def get_index(img, masked_image, bounds):
             #gray2 = cv2.filter2D(th2, 0, kernel)
 
             #fig = plt.figure(figsize=(40, 40))
-            #fig.add_subplot(1, 2, 1)
-            io.imshow(th2)
-            plt.show()
+            #fig.add_subplot(1, 2, 1)'''
+            #io.imshow(th)
+            #plt.show()
 
 
 
@@ -291,6 +398,9 @@ def process(img_name, ifprint):
     gray2 = invert(gray2)
     gray2 = binary_dilation(gray2, disk(3))
     # img_edges = cv2.Canny(gray, 200, 200, apertureSize=3)
+
+    #io.imshow(gray2)
+    #plt.show()
 
     #if ifprint:
     #    plot_angles(gray2, img_name)
